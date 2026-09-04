@@ -1,0 +1,16 @@
+{
+  "name": "ipcheck-static",
+  "version": "1.0.0",
+  "description": "Static version of ipcheck",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "dev": "npx http-server -c-1 -o"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  }
+}

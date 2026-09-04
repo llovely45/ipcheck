@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ipcheck</title>
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23F38020%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22><path d=%22M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z%22/></svg>">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap"
+        rel="stylesheet">
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Using Babel for runtime JSX compilation to keep it simple/static without build steps -->
+    <script src="https://unpkg.com/@babel/standalone@7.28.4/babel.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Plus Jakarta Sans', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace']
+                    },
+                    colors: {
+                        primary: 'rgb(var(--color-primary) / <alpha-value>)',
+                        surface: 'rgba(255, 255, 255, 0.9)',
+                    },
+                    animation: {
+                        'slide-up': 'slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                        'pulse-glow': 'pulseGlow 2s infinite',
+                        'dash': 'dash 20s linear infinite',
+                    },
+                    keyframes: {
+                        slideUp: {
+                            '0%': { opacity: 0, transform: 'translateY(20px)' },
+                            '100%': { opacity: 1, transform: 'translateY(0)' },
+                        },
+                        pulseGlow: {
+                            '0%, 100%': { opacity: 1, boxShadow: '0 0 0 0px rgba(var(--color-primary), 0.4)' },
+                            '50%': { opacity: 0.8, boxShadow: '0 0 0 4px rgba(var(--color-primary), 0)' },
+                        },
+                        dash: {
+                            to: { strokeDashoffset: '1000' }
+                        }
+                    },
+                    boxShadow: {
+                        'glass': '0 8px 32px 0 rgba(31, 38, 135, 0.05)',
+                        'neon': '0 0 10px rgba(var(--color-primary), 0.2)',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        :root {
+            --color-primary: 243 128 32;
+            /* #F38020 in RGB */
+        }
+    </style>
+    <link rel="stylesheet" href="static/style.css">
+</head>
+
+<body
+    class="p-4 md:p-8 pb-24 antialiased selection:bg-orange-100 selection:text-orange-600 dark:selection:bg-orange-500/30 dark:selection:text-orange-400">
+    <div id="root" class="max-w-7xl mx-auto relative z-10"></div>
+
+    <script src="static/api.js"></script>
+    <script type="text/babel" data-presets="react" src="static/app.js"></script>
+</body>
+
+</html>

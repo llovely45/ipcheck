@@ -1,0 +1,138 @@
+:root {
+    --bg-body: #f0f4f8;
+    --bg-card: rgba(255, 255, 255, 0.8);
+    --bg-card-border: rgba(255, 255, 255, 0.8);
+    --bg-scan-line: rgba(255, 255, 255, 0.4);
+}
+
+body {
+    background-color: var(--bg-body);
+    background-image:
+        linear-gradient(rgba(200, 200, 200, 0.1) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(200, 200, 200, 0.1) 1px, transparent 1px);
+    background-size: 30px 30px;
+    min-height: 100vh;
+    color: #0f172a;
+    overflow-x: hidden;
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+body.dark {
+    /* Dark mode overrides variables primarily, but here we set distinct dark values */
+    background-color: #0f172a;
+    color: #f8fafc;
+    background-image:
+        linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+}
+
+.glass-card {
+    background: var(--bg-card);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--bg-card-border);
+    box-shadow:
+        0 4px 6px -1px rgba(0, 0, 0, 0.02),
+        0 2px 4px -1px rgba(0, 0, 0, 0.02),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+    transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+.dark .glass-card {
+    /* Dark mode card styles */
+    background: rgba(30, 41, 59, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow:
+        0 4px 6px -1px rgba(0, 0, 0, 0.2),
+        0 2px 4px -1px rgba(0, 0, 0, 0.1),
+        inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.scan-line {
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 50%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, var(--bg-scan-line), transparent);
+    transform: skewX(-20deg);
+    animation: scan 6s infinite;
+    pointer-events: none;
+}
+
+.dark .scan-line {
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+}
+
+@keyframes scan {
+
+    0%,
+    50% {
+        left: -100%;
+    }
+
+    100% {
+        left: 200%;
+    }
+}
+
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+
+.no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+/* Settings Menu */
+.settings-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 0.5rem;
+    padding: 1rem;
+    width: 280px;
+    z-index: 50;
+    border-radius: 1rem;
+    transform-origin: top right;
+    animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes scaleIn {
+    from {
+        opacity: 0;
+        transform: scale(0.95) translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.color-swatch {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 9999px;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    border: 2px solid transparent;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.color-swatch:hover {
+    transform: scale(1.1);
+}
+
+.color-swatch.active {
+    transform: scale(1.1);
+    box-shadow: 0 0 0 2px hsl(var(--color-surface)), 0 0 0 4px rgb(var(--color-primary));
+}
+
+.dark .color-swatch.active {
+    box-shadow: 0 0 0 2px rgba(30, 41, 59, 1), 0 0 0 4px rgb(var(--color-primary));
+}
