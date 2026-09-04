@@ -261,6 +261,17 @@ test('parses Cloudflare Trace key/value data without truncating values', () => {
     });
 });
 
+test('deduplicates repeated risk labels across sources and geolocation flags', () => {
+    const api = loadApi();
+    assert.ok(api);
+
+    assert.equal(typeof api.getRiskPointLabels, 'function');
+    assert.deepEqual(JSON.parse(JSON.stringify(api.getRiskPointLabels([
+        { flags: ['Proxy', 'VPN'] },
+        { flags: ['Proxy', 'proxy', 'Bogon'] },
+    ], { isProxy: true, isBogon: true }))), ['Proxy', 'VPN', 'Bogon']);
+});
+
 test('normalizes the free geolocation fallback response', () => {
     const api = loadApi();
     assert.ok(api);
@@ -365,6 +376,49 @@ test('keeps a usable profile when reputation lookup is unavailable', async () =>
     assert.equal(profile.risk.sourceCount, 0);
 });
 
+test('coalesces repeated profile lookups for the same IP', async () => {
+    const calls = [];
+    const api = loadApi(async (url) => {
+        calls.push(url);
+        if (url === 'https://ipwho.is/8.8.8.8') {
+            return response({
+                success: true,
+                ip: '8.8.8.8',
+                country: 'United States',
+                connection: { asn: 15169, org: 'Google LLC', isp: 'Google LLC' },
+            });
+        }
+        if (url === 'https://blackbox.ipinfo.app/api/v1/8.8.8.8') return response('N');
+        if (url === 'https://ipinfo.io/widget/demo/8.8.8.8') {
+            return response({
+                data: {
+                    ip: '8.8.8.8',
+                    privacy: { vpn: false, proxy: false, tor: false, relay: false, hosting: false },
+                    is_anonymous: false,
+                    is_hosting: false,
+                },
+            });
+        }
+        if (url === 'https://free.freeipapi.com/api/json/8.8.8.8') {
+            return response({ ipAddress: '8.8.8.8', isProxy: false });
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+    });
+    assert.ok(api);
+
+    const profiles = await Promise.all([
+        api.getProfile('8.8.8.8'),
+        api.getProfile('8.8.8.8'),
+        api.getProfile('8.8.8.8'),
+    ]);
+
+    assert.equal(profiles[0].geo.ip, '8.8.8.8');
+    assert.equal(profiles[1].geo.ip, '8.8.8.8');
+    assert.equal(profiles[2].geo.ip, '8.8.8.8');
+    assert.equal(calls.length, 4);
+    assert.equal(new Set(calls).size, 4);
+});
+
 test('rejects non-success responses instead of parsing error pages as data', async () => {
     const api = loadApi(async () => response('<html>blocked</html>', { status: 403 }));
     assert.ok(api);
@@ -401,12 +455,13 @@ test('uses presentation-only IP masking and card reveal interactions in the acti
     assert.match(appSource, /getProfile\(ip\)/);
 });
 
-test('shows risk point count and hides internal multi-source comparison', () => {
+test('shows risk point text and hides internal multi-source comparison', () => {
     const appSource = readFileSync(resolve(projectRoot, 'static/app.js'), 'utf8');
 
     assert.match(appSource, /风控点/);
     assert.match(appSource, /risk\.sources/);
-    assert.match(appSource, /source\.flags/);
+    assert.match(appSource, /getRiskPointLabels/);
+    assert.match(appSource, /riskPointLabels\.map/);
     assert.doesNotMatch(appSource, /来源覆盖率/);
     assert.doesNotMatch(appSource, /多源对比/);
     assert.doesNotMatch(appSource, /source\.provider/);

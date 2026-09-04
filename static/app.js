@@ -7,6 +7,7 @@ const {
     getForeignIp,
     getIpVersion,
     getProfile,
+    getRiskPointLabels,
     maskIp
 } = window.IPCheckAPI;
 
@@ -222,17 +223,8 @@ const RiskReport = ({ data, loading }) => {
     }[risk.classification] || { label: '不可用', color: 'text-gray-500 dark:text-slate-400' };
     const sources = Array.isArray(risk.sources) ? risk.sources : [];
     const score = Number.isFinite(risk.score) ? risk.score : null;
-    const riskPointLabels = new Set();
-    sources.forEach((source) => {
-        if (!Array.isArray(source?.flags)) return;
-        source.flags.forEach((flag) => {
-            const label = String(flag || '').trim();
-            if (label) riskPointLabels.add(label);
-        });
-    });
-    if (geo.isProxy === true) riskPointLabels.add('Proxy');
-    if (geo.isBogon === true) riskPointLabels.add('Bogon');
-    const riskPointCount = riskPointLabels.size;
+    const riskPointLabels = getRiskPointLabels(sources, geo);
+    const riskPointCount = riskPointLabels.length;
     const hasRiskData = sources.some((source) => source?.status === 'available')
         || typeof geo.isProxy === 'boolean'
         || typeof geo.isBogon === 'boolean';
@@ -296,8 +288,16 @@ const RiskReport = ({ data, loading }) => {
                         <div className={`text-xl font-mono font-bold mt-1 ${riskPointCount > 0 ? 'text-rose-500' : hasRiskData ? 'text-emerald-500' : 'text-gray-700 dark:text-slate-200'}`}>
                             {hasRiskData ? riskPointCount : 'N/A'}
                         </div>
-                        <div className="text-[10px] text-gray-400 dark:text-slate-500">
-                            {hasRiskData ? (riskPointCount === 0 ? '未识别已知风险' : '已识别风险信号') : '数据不可用'}
+                        <div className="text-[10px] text-gray-400 dark:text-slate-500 min-h-[16px] flex items-center justify-center">
+                            {!hasRiskData ? '数据不可用' : riskPointLabels.length === 0 ? '未识别已知风险' : (
+                                <div className="flex flex-wrap justify-center gap-1" aria-label="风控风险明细">
+                                    {riskPointLabels.map((label) => (
+                                        <span key={label} className="px-1.5 py-0.5 rounded bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-900">
+                                            {label}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
                     <div className="absolute bottom-0 left-0 h-1 bg-current w-full opacity-20 text-gray-400"></div>

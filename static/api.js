@@ -366,6 +366,25 @@
         };
     };
 
+    const getRiskPointLabels = (sources, geo = {}) => {
+        const labels = [];
+        const seen = new Set();
+        const add = (value) => {
+            const label = textOrEmpty(value);
+            const key = label.toLowerCase();
+            if (!label || seen.has(key)) return;
+            seen.add(key);
+            labels.push(label);
+        };
+
+        (Array.isArray(sources) ? sources : []).forEach((source) => {
+            if (Array.isArray(source?.flags)) source.flags.forEach(add);
+        });
+        if (geo?.isProxy === true) add('Proxy');
+        if (geo?.isBogon === true) add('Bogon');
+        return labels;
+    };
+
     const RISK_SOURCE_DEFINITIONS = Object.freeze([
         Object.freeze({
             id: 'blackbox',
@@ -453,20 +472,36 @@
         };
     };
 
-    const getProfile = async (ip, fetchImpl = global.fetch) => {
-        const [geoResult, riskResult] = await Promise.allSettled([
-            getGeoData(ip, fetchImpl),
-            getRiskData(ip, fetchImpl)
-        ]);
+    const profileCache = new Map();
+    const getProfile = (ip, fetchImpl = global.fetch) => {
+        const lookupIp = textOrEmpty(ip);
+        if (!lookupIp) return Promise.reject(new Error('IP profile lookup requires an IP'));
 
-        if (geoResult.status === 'rejected' && riskResult.status === 'rejected') {
-            throw geoResult.reason || riskResult.reason || new Error('IP profile lookup failed');
-        }
+        const cacheKey = lookupIp.toLowerCase();
+        const cached = profileCache.get(cacheKey);
+        if (cached) return cached;
 
-        return {
-            geo: geoResult.status === 'fulfilled' ? geoResult.value : null,
-            risk: riskResult.status === 'fulfilled' ? riskResult.value : null
-        };
+        const profilePromise = (async () => {
+            const [geoResult, riskResult] = await Promise.allSettled([
+                getGeoData(lookupIp, fetchImpl),
+                getRiskData(lookupIp, fetchImpl)
+            ]);
+
+            if (geoResult.status === 'rejected' && riskResult.status === 'rejected') {
+                throw geoResult.reason || riskResult.reason || new Error('IP profile lookup failed');
+            }
+
+            return {
+                geo: geoResult.status === 'fulfilled' ? geoResult.value : null,
+                risk: riskResult.status === 'fulfilled' ? riskResult.value : null
+            };
+        })();
+
+        profileCache.set(cacheKey, profilePromise);
+        profilePromise.catch(() => {
+            if (profileCache.get(cacheKey) === profilePromise) profileCache.delete(cacheKey);
+        });
+        return profilePromise;
     };
 
     global.IPCheckAPI = Object.freeze({
@@ -482,6 +517,7 @@
         parseBlackboxRisk,
         parseIpinfoPrivacyResponse,
         parseFreeIpApiRisk,
+        getRiskPointLabels,
         aggregatePurityScores,
         getGeoData,
         getTraceData,
