@@ -13,10 +13,10 @@
 -   **📍 多源数据**：
     -   主 IP/地理位置：优先使用 `ipwho.is`，失败时回退到 `ipapi.is` 和 `freeipapi.com`。
     -   纯净度来源（仅后台计算）：`ipinfo.io/widget/demo`（45%）、`blackbox.ipinfo.app`（35%）、`freeipapi.com`（20%）。权重是结合供应商规模/行业信誉、数据维度和公开可用性的启发式静态配置，不是官方评级。
-    -   国内出口：使用 `myip.ipip.net/json`；国外出口和双栈检测：使用 JSON 版 `ipify`。
+    -   国内出口：使用 `myip.ipip.net/json`；国外出口使用 JSON 版 `ipify`；双栈检测优先使用 IPLark 纯文本接口，失败时回退到 `ipify`。
     -   连接信息：读取 Cloudflare Trace 获取当前访问 IP、TLS/HTTP 版本和边缘节点；Cloudflare 卡片使用该 IP。
 -   **🔁 双栈检测**：同时检测 IPv4 和 IPv6 连接能力。
--   **🔒 展示脱敏**：页面默认隐藏 IP 后两段，悬停或聚焦对应卡片时临时显示完整 IP；API 请求仍使用原始地址。
+-   **🔒 展示脱敏**：页面默认隐藏 IPv4 后两段、IPv6 `/32` 后的全部段，悬停或聚焦对应卡片时临时显示完整 IP；API 请求仍使用原始地址。
 -   **🕵️ 深度指纹识别**：检测 User Agent、Canvas Hash、GPU 渲染器、屏幕参数、内存估算等硬件指纹。
 
 ## � 快速开始
@@ -56,7 +56,7 @@
 -   **地理信息回退**：`ipapi.is` 的匿名接口目前只提供 IP、归属组织、ASN 和地理信息；检测标记和信誉评分需要密钥，因此不会在前端写入密钥。
 -   **接口选择**：`proxycheck.io` 当前响应未提供浏览器所需 CORS；`ip.teoh.io` 当前被 403；`ip-api.com` 的免费 HTTPS 接口要求密钥，HTTP 接口虽可用但从 HTTPS Pages 调用会被浏览器以混合内容拦截，因此均未直接写入静态前端。若要接入 `ip-api`，需要增加 Worker/Pages Function 代理。
 -   **API 限流**：公共接口均可能按来源 IP 限流；页面会检查 HTTP 状态并按顺序回退，避免把错误页当成 JSON 数据；同一 IP 的完整资料查询会在当前页面内复用，避免三个卡片重复触发同一组接口。
--   **CORS 策略**：部分数据（如 TLS 版本）依赖 `cloudflare.com/cdn-cgi/trace`，在某些浏览器或网络环境下可能被拦截，页面会自动降级处理，不影响主要的 IP 显示功能。
+-   **CORS 策略**：IPLark IPv4 接口允许跨域，IPv6 接口当前允许 `https://iplark.com`；其他域名部署时会自动回退到 `ipify`。部分数据（如 TLS 版本）依赖 `cloudflare.com/cdn-cgi/trace`，在某些浏览器或网络环境下可能被拦截，页面会自动降级处理。
 -   **AdGuard/广告拦截器**：拦截器可能阻止公共 IP 接口请求，导致对应卡片显示不可用；建议将本站加入白名单。
 
 ## 📄 开源协议

@@ -19,6 +19,10 @@
             'https://api64.ipify.org?format=json'
         ]),
         dualStack: Object.freeze({
+            v4: 'https://iplark.com/ipapi/public/ip',
+            v6: 'https://6.iplark.com/'
+        }),
+        dualStackFallback: Object.freeze({
             v4: 'https://api.ipify.org?format=json',
             v6: 'https://api6.ipify.org?format=json'
         }),
@@ -85,7 +89,7 @@
         }
 
         const ipv6Groups = expandIpv6(text);
-        return ipv6Groups ? `${ipv6Groups.slice(0, 6).join(':')}:*:*` : text;
+        return ipv6Groups ? `${ipv6Groups.slice(0, 2).join(':')}:*:*:*:*:*:*` : text;
     };
 
     const normalizeAsn = (value) => {
@@ -250,6 +254,12 @@
         return textOrEmpty(payload.ip);
     };
 
+    const parseIpText = (value, provider = 'IPLark') => {
+        const ip = textOrEmpty(value);
+        if (!ip) throw new Error(`${provider} returned no IP data`);
+        return ip;
+    };
+
     const getDomesticIp = async (fetchImpl = global.fetch) => {
         const payload = await requestJson(API_ENDPOINTS.domesticIp, fetchImpl);
         const ip = payload?.data?.ip || payload?.ip;
@@ -272,7 +282,24 @@
     const getIpVersion = async (version, fetchImpl = global.fetch) => {
         const url = API_ENDPOINTS.dualStack[version];
         if (!url) throw new Error(`Unsupported IP version: ${version}`);
-        return requestJson(url, fetchImpl).then((payload) => parseIpify(payload, `ipify ${version}`));
+
+        const fallbackUrl = API_ENDPOINTS.dualStackFallback[version];
+        let lastError = null;
+        try {
+            return await requestText(url, fetchImpl).then((value) => parseIpText(value, `IPLark ${version}`));
+        } catch (error) {
+            lastError = error;
+        }
+
+        if (fallbackUrl) {
+            try {
+                return await requestJson(fallbackUrl, fetchImpl).then((payload) => parseIpify(payload, `ipify ${version}`));
+            } catch (error) {
+                lastError = error;
+            }
+        }
+
+        throw lastError || new Error(`All ${version} IP providers failed`);
     };
 
     const parseBlackboxDecision = (value) => {

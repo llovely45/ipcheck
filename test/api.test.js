@@ -127,18 +127,53 @@ test('parses the free blackbox reputation response as an aggregate decision', ()
     });
 });
 
-test('masks the final two IPv4 or IPv6 components without changing placeholders', () => {
+test('masks the final two IPv4 components and keeps only the IPv6 /32 prefix', () => {
     const api = loadApi();
     assert.ok(api);
 
     assert.equal(api.maskIp('203.0.113.8'), '203.0.*.*');
     assert.equal(
         api.maskIp('2001:0db8:0000:0000:0000:0000:0000:0001'),
-        '2001:0db8:0000:0000:0000:0000:*:*'
+        '2001:0db8:*:*:*:*:*:*'
     );
     assert.equal(api.maskIp('::ffff:192.0.2.1'), '::ffff:192.0.*.*');
     assert.equal(api.maskIp('Loading...'), 'Loading...');
     assert.equal(api.maskIp('Connection Failed'), 'Connection Failed');
+});
+
+test('uses IPLark plain-text endpoints for IPv4 and IPv6 detection', async () => {
+    const calls = [];
+    const api = loadApi(async (url) => {
+        calls.push(url);
+        if (url === 'https://iplark.com/ipapi/public/ip') return response('203.0.113.8\n');
+        if (url === 'https://6.iplark.com/') return response('2001:db8::1\n');
+        throw new Error(`Unexpected URL: ${url}`);
+    });
+    assert.ok(api);
+
+    assert.equal(await api.getIpVersion('v4'), '203.0.113.8');
+    assert.equal(await api.getIpVersion('v6'), '2001:db8::1');
+    assert.deepEqual(calls, [
+        'https://iplark.com/ipapi/public/ip',
+        'https://6.iplark.com/'
+    ]);
+});
+
+test('falls back to ipify when an IPLark plain-text lookup is unavailable', async () => {
+    const calls = [];
+    const api = loadApi(async (url) => {
+        calls.push(url);
+        if (url === 'https://iplark.com/ipapi/public/ip') return response('   ');
+        if (url === 'https://api.ipify.org?format=json') return response({ ip: '203.0.113.8' });
+        throw new Error(`Unexpected URL: ${url}`);
+    });
+    assert.ok(api);
+
+    assert.equal(await api.getIpVersion('v4'), '203.0.113.8');
+    assert.deepEqual(calls, [
+        'https://iplark.com/ipapi/public/ip',
+        'https://api.ipify.org?format=json'
+    ]);
 });
 
 test('normalizes ipinfo widget privacy fields into a scored risk source', () => {
