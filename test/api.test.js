@@ -127,6 +127,129 @@ test('parses the free blackbox reputation response as an aggregate decision', ()
     });
 });
 
+test('masks the final two IPv4 or IPv6 components without changing placeholders', () => {
+    const api = loadApi();
+    assert.ok(api);
+
+    assert.equal(api.maskIp('203.0.113.8'), '203.0.*.*');
+    assert.equal(
+        api.maskIp('2001:0db8:0000:0000:0000:0000:0000:0001'),
+        '2001:0db8:0000:0000:0000:0000:*:*'
+    );
+    assert.equal(api.maskIp('::ffff:192.0.2.1'), '::ffff:192.0.*.*');
+    assert.equal(api.maskIp('Loading...'), 'Loading...');
+    assert.equal(api.maskIp('Connection Failed'), 'Connection Failed');
+});
+
+test('normalizes ipinfo widget privacy fields into a scored risk source', () => {
+    const api = loadApi();
+    assert.ok(api);
+
+    const source = api.parseIpinfoPrivacyResponse({
+        data: {
+            ip: '8.8.8.8',
+            privacy: {
+                vpn: false,
+                proxy: false,
+                tor: false,
+                relay: false,
+                hosting: true,
+            },
+            is_anonymous: false,
+            is_hosting: true,
+        },
+    });
+
+    assert.equal(source.ip, '8.8.8.8');
+    assert.equal(source.score, 70);
+    assert.equal(source.decision, 'allow');
+    assert.deepEqual(JSON.parse(JSON.stringify(source.flags)), ['托管/数据中心']);
+    assert.equal(source.status, 'available');
+});
+
+test('normalizes freeipapi proxy flag without inventing VPN or Tor results', () => {
+    const api = loadApi();
+    assert.ok(api);
+
+    const source = api.parseFreeIpApiRisk({
+        ipAddress: '203.0.113.8',
+        isProxy: true,
+    });
+
+    assert.equal(source.ip, '203.0.113.8');
+    assert.equal(source.score, 15);
+    assert.equal(source.decision, 'block');
+    assert.deepEqual(JSON.parse(JSON.stringify(source.flags)), ['Proxy']);
+    assert.equal(source.status, 'available');
+});
+
+test('aggregates only scored sources and reports weighted coverage', () => {
+    const api = loadApi();
+    assert.ok(api);
+
+    const aggregate = api.aggregatePurityScores([
+        { id: 'ipinfo', provider: 'ipinfo.io', weight: 0.45, score: 70, status: 'available', decision: 'allow' },
+        { id: 'blackbox', provider: 'blackbox.ipinfo.app', weight: 0.35, score: 90, status: 'available', decision: 'allow' },
+        { id: 'freeipapi', provider: 'freeipapi.com', weight: 0.20, score: null, status: 'unavailable', decision: 'unknown' },
+    ]);
+
+    assert.equal(aggregate.score, 79);
+    assert.equal(aggregate.sourceCount, 2);
+    assert.equal(aggregate.totalSourceCount, 3);
+    assert.equal(aggregate.coverage, 80);
+    assert.equal(aggregate.classification, 'good');
+});
+
+test('does not invent a purity score when every risk source is unavailable', () => {
+    const api = loadApi();
+    assert.ok(api);
+
+    const aggregate = api.aggregatePurityScores([
+        { id: 'blackbox', provider: 'blackbox.ipinfo.app', weight: 0.35, score: null, status: 'unavailable', decision: 'unknown' },
+        { id: 'ipinfo', provider: 'ipinfo.io', weight: 0.45, score: null, status: 'unavailable', decision: 'unknown' },
+    ]);
+
+    assert.equal(aggregate.score, null);
+    assert.equal(aggregate.sourceCount, 0);
+    assert.equal(aggregate.totalSourceCount, 2);
+    assert.equal(aggregate.coverage, 0);
+    assert.equal(aggregate.classification, 'unknown');
+});
+
+test('queries every configured risk source with the original unmasked IP', async () => {
+    const calls = [];
+    const api = loadApi(async (url) => {
+        calls.push(url);
+        if (url === 'https://blackbox.ipinfo.app/api/v1/203.0.113.8') return response('N');
+        if (url === 'https://ipinfo.io/widget/demo/203.0.113.8') {
+            return response({
+                data: {
+                    ip: '203.0.113.8',
+                    privacy: { vpn: false, proxy: false, tor: false, relay: false, hosting: false },
+                    is_anonymous: false,
+                    is_hosting: false,
+                },
+            });
+        }
+        if (url === 'https://free.freeipapi.com/api/json/203.0.113.8') {
+            return response({ ipAddress: '203.0.113.8', isProxy: false });
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+    });
+    assert.ok(api);
+
+    const risk = await api.getRiskData('203.0.113.8');
+
+    assert.equal(risk.score, 92);
+    assert.equal(risk.coverage, 100);
+    assert.equal(risk.sourceCount, 3);
+    assert.deepEqual(calls, [
+        'https://blackbox.ipinfo.app/api/v1/203.0.113.8',
+        'https://ipinfo.io/widget/demo/203.0.113.8',
+        'https://free.freeipapi.com/api/json/203.0.113.8',
+    ]);
+});
+
 test('parses Cloudflare Trace key/value data without truncating values', () => {
     const api = loadApi();
     assert.ok(api);
@@ -237,7 +360,9 @@ test('keeps a usable profile when reputation lookup is unavailable', async () =>
 
     const profile = await api.getProfile('8.8.8.8');
     assert.equal(profile.geo.ip, '8.8.8.8');
-    assert.equal(profile.risk, null);
+    assert.equal(profile.risk.score, null);
+    assert.equal(profile.risk.coverage, 0);
+    assert.equal(profile.risk.sourceCount, 0);
 });
 
 test('rejects non-success responses instead of parsing error pages as data', async () => {
@@ -263,4 +388,24 @@ test('does not retain the retired IP providers in active source files', () => {
 test('pins Babel to the UMD-compatible 7.x runtime', () => {
     const indexSource = readFileSync(resolve(projectRoot, 'index.html'), 'utf8');
     assert.match(indexSource, /@babel\/standalone@7\.28\.4\/babel\.min\.js/);
+});
+
+test('uses presentation-only IP masking and card reveal interactions in the active page', () => {
+    const appSource = readFileSync(resolve(projectRoot, 'static/app.js'), 'utf8');
+
+    assert.match(appSource, /maskIp/);
+    assert.match(appSource, /onMouseEnter/);
+    assert.match(appSource, /onMouseLeave/);
+    assert.match(appSource, /onFocus/);
+    assert.match(appSource, /onBlur/);
+    assert.match(appSource, /getProfile\(ip\)/);
+});
+
+test('renders multi-source risk details and weighted coverage in the active page', () => {
+    const appSource = readFileSync(resolve(projectRoot, 'static/app.js'), 'utf8');
+
+    assert.match(appSource, /risk\.sources/);
+    assert.match(appSource, /risk\.coverage/);
+    assert.match(appSource, /risk\.basis/);
+    assert.match(appSource, /source\.weight/);
 });

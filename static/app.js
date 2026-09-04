@@ -6,13 +6,46 @@ const {
     getDomesticIp,
     getForeignIp,
     getIpVersion,
-    getProfile
+    getProfile,
+    maskIp
 } = window.IPCheckAPI;
 
 // --- Helper Functions ---
 const hexToRgb = (hex) => {
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
     return result ? `${parseInt(result[1], 16)} ${parseInt(result[2], 16)} ${parseInt(result[3], 16)}` : null;
+};
+
+const useIpReveal = () => {
+    const [revealed, setRevealed] = useState(false);
+
+    return {
+        revealed,
+        revealHandlers: {
+            onMouseEnter: () => setRevealed(true),
+            onMouseLeave: () => setRevealed(false),
+            onFocus: () => setRevealed(true),
+            onBlur: (event) => {
+                if (!event.currentTarget.contains(event.relatedTarget)) setRevealed(false);
+            }
+        }
+    };
+};
+
+const MaskedIp = ({ ip, revealed }) => {
+    const text = revealed ? ip : maskIp(ip);
+    const isMasked = Boolean(ip && text !== ip);
+
+    return (
+        <span
+            className="inline-flex items-center gap-2"
+            title={isMasked ? '悬停或聚焦卡片显示完整 IP' : undefined}
+            aria-label={isMasked ? 'IP 已脱敏，悬停或聚焦卡片显示完整 IP' : text}
+        >
+            <span>{text}</span>
+            {isMasked && <span className="text-[10px] font-sans font-medium text-gray-400 dark:text-slate-500">悬停查看</span>}
+        </span>
+    );
 };
 
 // --- Helper Hook for Data Fetching ---
@@ -176,9 +209,22 @@ const RiskReport = ({ data, loading }) => {
     const decision = risk.decision || 'unknown';
     const decisionMeta = {
         allow: { label: '未发现高风险', type: 'good', color: 'text-emerald-500' },
-        block: { label: '建议拦截', type: 'bad', color: 'text-rose-500' },
-        unknown: { label: '检测不可用', type: 'neutral', color: 'text-gray-500 dark:text-slate-400' }
-    }[decision] || { label: '检测不可用', type: 'neutral', color: 'text-gray-500 dark:text-slate-400' };
+        review: { label: '建议人工复核', type: 'warn', color: 'text-amber-500' },
+        block: { label: '存在高风险信号', type: 'bad', color: 'text-rose-500' },
+        unknown: { label: '数据不足', type: 'neutral', color: 'text-gray-500 dark:text-slate-400' }
+    }[decision] || { label: '数据不足', type: 'neutral', color: 'text-gray-500 dark:text-slate-400' };
+    const classificationMeta = {
+        excellent: { label: '优秀', color: 'text-emerald-500' },
+        good: { label: '良好', color: 'text-green-500' },
+        caution: { label: '需注意', color: 'text-amber-500' },
+        poor: { label: '较差', color: 'text-rose-500' },
+        unknown: { label: '不可用', color: 'text-gray-500 dark:text-slate-400' }
+    }[risk.classification] || { label: '不可用', color: 'text-gray-500 dark:text-slate-400' };
+    const sources = Array.isArray(risk.sources) ? risk.sources : [];
+    const score = Number.isFinite(risk.score) ? risk.score : null;
+    const coverage = Number.isFinite(risk.coverage) ? risk.coverage : null;
+    const sourceCount = Number.isFinite(risk.sourceCount) ? risk.sourceCount : 0;
+    const totalSourceCount = Number.isFinite(risk.totalSourceCount) ? risk.totalSourceCount : sources.length;
     const hasCoordinates = Number.isFinite(geo.latitude) && Number.isFinite(geo.longitude);
     const country = [geo.country, geo.countryCode ? `(${geo.countryCode})` : ''].filter(Boolean).join(' ');
     const cityRegion = [geo.city, geo.region].filter(Boolean).join(', ');
@@ -213,24 +259,39 @@ const RiskReport = ({ data, loading }) => {
         } catch { return '未知'; }
     };
 
+    const renderSourceState = (source) => {
+        if (source.status !== 'available' || !Number.isFinite(source.score)) return '接口不可用';
+        if (source.decision === 'block') return '有风险信号';
+        return '已返回';
+    };
+
     return (
         <div className="mt-5 pt-4 border-t border-gray-100 dark:border-slate-700 transition-colors">
-            <div className="grid grid-cols-2 gap-4 mb-5">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-5">
                 <div className="bg-white/50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-700 rounded-lg p-3 text-center relative overflow-hidden group transition-colors">
                     <div className="relative z-10">
-                        <div className="text-[10px] text-gray-400 dark:text-slate-500 uppercase font-bold">风控判定</div>
-                        <div className={`text-base font-bold mt-1 ${decisionMeta.color}`}>
-                            {decisionMeta.label}
-                        </div>
+                        <div className="text-[10px] text-gray-400 dark:text-slate-500 uppercase font-bold">综合判定</div>
+                        <div className={`text-base font-bold mt-1 ${decisionMeta.color}`}>{decisionMeta.label}</div>
                     </div>
                     <div className={`absolute bottom-0 left-0 h-1 bg-current w-full opacity-20 ${decisionMeta.color}`}></div>
                 </div>
                 <div className="bg-white/50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-700 rounded-lg p-3 text-center relative overflow-hidden group transition-colors">
                     <div className="relative z-10">
-                        <div className="text-[10px] text-gray-400 dark:text-slate-500 uppercase font-bold">风险评分</div>
-                        <div className="text-xl font-mono font-bold mt-1 text-gray-700 dark:text-slate-200">
-                            {risk.score === null || risk.score === undefined ? 'N/A' : `${risk.score}/100`}
+                        <div className="text-[10px] text-gray-400 dark:text-slate-500 uppercase font-bold">纯净度评分</div>
+                        <div className={`text-xl font-mono font-bold mt-1 ${classificationMeta.color}`}>
+                            {score === null ? 'N/A' : `${score}/100`}
                         </div>
+                        <div className={`text-[10px] font-semibold ${classificationMeta.color}`}>{classificationMeta.label}</div>
+                    </div>
+                    <div className={`absolute bottom-0 left-0 h-1 bg-current w-full opacity-20 ${classificationMeta.color}`}></div>
+                </div>
+                <div className="col-span-2 md:col-span-1 bg-white/50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-700 rounded-lg p-3 text-center relative overflow-hidden group transition-colors">
+                    <div className="relative z-10">
+                        <div className="text-[10px] text-gray-400 dark:text-slate-500 uppercase font-bold">来源覆盖率</div>
+                        <div className="text-xl font-mono font-bold mt-1 text-gray-700 dark:text-slate-200">
+                            {coverage === null ? 'N/A' : `${coverage}%`}
+                        </div>
+                        <div className="text-[10px] text-gray-400 dark:text-slate-500">{sourceCount}/{totalSourceCount} 个来源</div>
                     </div>
                     <div className="absolute bottom-0 left-0 h-1 bg-current w-full opacity-20 text-gray-400"></div>
                 </div>
@@ -240,7 +301,39 @@ const RiskReport = ({ data, loading }) => {
                 <Tag type={decisionMeta.type} active={decision !== 'unknown'} text={decisionMeta.label} />
                 <Tag type="bad" active={geo.isProxy === true} text="Proxy" />
                 <Tag type="bad" active={geo.isBogon === true} text="Bogon" />
-                <Tag type="neutral" active={decision === 'unknown'} text="风控数据不可用" />
+                <Tag type="neutral" active={decision === 'unknown'} text="来源不足" />
+            </div>
+
+            <div className="mb-5 p-3 bg-white/40 dark:bg-slate-800/40 border border-gray-100 dark:border-slate-700 rounded-lg">
+                <div className="flex justify-between items-center gap-3 mb-2">
+                    <span className="text-[10px] text-gray-400 dark:text-slate-500 uppercase font-bold tracking-wider">多源对比</span>
+                    <span className="text-[10px] text-gray-400 dark:text-slate-500">权重按规模/信誉/维度启发式分配</span>
+                </div>
+                <div className="space-y-2">
+                    {sources.length === 0 ? (
+                        <div className="text-xs text-gray-500 dark:text-slate-400">暂无风险来源返回，未生成综合分数。</div>
+                    ) : sources.map((source) => {
+                        const sourceScore = Number.isFinite(source.score) ? `${source.score}/100` : 'N/A';
+                        const sourceWeight = Number.isFinite(source.weight) ? `${Math.round(source.weight * 100)}%` : 'N/A';
+                        const available = source.status === 'available' && Number.isFinite(source.score);
+                        return (
+                            <div key={source.id || source.provider} className="border-t border-gray-100/70 dark:border-slate-700/70 pt-2 first:border-t-0 first:pt-0">
+                                <div className="flex items-center justify-between gap-3">
+                                    <span className="text-xs font-semibold text-gray-700 dark:text-slate-300">{source.provider || 'Unknown API'}</span>
+                                    <span className={`text-sm font-mono font-bold ${available ? 'text-gray-700 dark:text-slate-200' : 'text-gray-400 dark:text-slate-500'}`}>{sourceScore}</span>
+                                </div>
+                                <div className="flex items-center justify-between gap-3 text-[10px] text-gray-400 dark:text-slate-500">
+                                    <span>{source.description || '风险信号'} · 权重 {sourceWeight}</span>
+                                    <span>{renderSourceState(source)}</span>
+                                </div>
+                                {Array.isArray(source.flags) && source.flags.length > 0 && (
+                                    <div className="text-[10px] text-rose-500 dark:text-rose-400 mt-1">信号：{source.flags.join(' / ')}</div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+                <p className="text-[10px] text-gray-400 dark:text-slate-500 mt-3">{risk.basis || '综合分数仅供参考；缺失来源不会被填充为虚构分数。'}</p>
             </div>
 
             <div className="grid grid-cols-2 gap-x-4 gap-y-1">
@@ -268,7 +361,7 @@ const RiskReport = ({ data, loading }) => {
                 </div>
             </div>
             <p className="text-[10px] text-gray-400 dark:text-slate-500 mt-3">
-                风控接口返回综合允许/拦截建议；未提供 Proxy、VPN、Tor 等分项时不会臆造标签。
+                纯净度分值范围为 1–100，1 最差、100 最好；来源只返回有限风险信号，不代表绝对安全。
             </p>
         </div>
     );
@@ -278,6 +371,7 @@ const IpCard = ({ title, type, delay = 0, accent, cfIp }) => {
     const [info, setInfo] = useState({ ip: 'Initializing...', status: 'loading' });
     const [profile, setProfile] = useState(null);
     const [loadProfile, setLoadProfile] = useState(false);
+    const { revealed, revealHandlers } = useIpReveal();
 
     useEffect(() => {
         let active = true;
@@ -339,6 +433,8 @@ const IpCard = ({ title, type, delay = 0, accent, cfIp }) => {
         <div
             className="glass-card rounded-2xl p-6 relative overflow-hidden animate-slide-up h-full flex flex-col"
             style={{ animationDelay: `${delay}ms` }}
+            tabIndex="0"
+            {...revealHandlers}
         >
             <div className={`absolute top-0 left-0 w-full h-1 bg-${accent}-500`}></div>
             <div className="scan-line"></div>
@@ -356,7 +452,7 @@ const IpCard = ({ title, type, delay = 0, accent, cfIp }) => {
                     <div className="h-8 w-3/4 bg-gray-100 dark:bg-slate-700 rounded animate-pulse"></div>
                 ) : (
                     <div className={`text-2xl font-mono font-bold tracking-tight break-all ${isErr ? 'text-rose-500' : 'text-gray-800 dark:text-slate-100'}`}>
-                        {info.ip}
+                        <MaskedIp ip={info.ip} revealed={revealed} />
                     </div>
                 )}
             </div>
@@ -571,6 +667,7 @@ const Fingerprint = () => {
 
 const DualStackCard = ({ type, color }) => {
     const [ip, setIp] = useState(null);
+    const { revealed, revealHandlers } = useIpReveal();
     useEffect(() => {
         let active = true;
         getIpVersion(type)
@@ -583,11 +680,15 @@ const DualStackCard = ({ type, color }) => {
     const label = type === 'v4' ? 'IPv4 Connectivity' : 'IPv6 Connectivity';
 
     return (
-        <div className={`glass-card border-l-[3px] ${borderColor} rounded-xl p-4 flex items-center justify-between relative overflow-hidden group`}>
+        <div
+            className={`glass-card border-l-[3px] ${borderColor} rounded-xl p-4 flex items-center justify-between relative overflow-hidden group focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50`}
+            tabIndex="0"
+            {...revealHandlers}
+        >
             <div className="z-10">
                 <div className="text-[10px] text-gray-400 dark:text-slate-500 font-bold uppercase tracking-wider mb-1">{label}</div>
                 <div className="font-mono font-bold text-gray-800 dark:text-slate-100 text-sm break-all transition-colors">
-                    {ip || <span className="animate-pulse bg-gray-200 dark:bg-slate-700 text-transparent rounded">Loading IP Address...</span>}
+                    {ip ? <MaskedIp ip={ip} revealed={revealed} /> : <span className="animate-pulse bg-gray-200 dark:bg-slate-700 text-transparent rounded">Loading IP Address...</span>}
                 </div>
             </div>
             <div className={`absolute -right-4 -bottom-4 w-24 h-24 bg-${color}-400/10 dark:bg-${color}-500/20 rounded-full blur-xl group-hover:scale-150 transition-transform duration-500`}></div>
