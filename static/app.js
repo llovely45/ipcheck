@@ -222,9 +222,20 @@ const RiskReport = ({ data, loading }) => {
     }[risk.classification] || { label: '不可用', color: 'text-gray-500 dark:text-slate-400' };
     const sources = Array.isArray(risk.sources) ? risk.sources : [];
     const score = Number.isFinite(risk.score) ? risk.score : null;
-    const coverage = Number.isFinite(risk.coverage) ? risk.coverage : null;
-    const sourceCount = Number.isFinite(risk.sourceCount) ? risk.sourceCount : 0;
-    const totalSourceCount = Number.isFinite(risk.totalSourceCount) ? risk.totalSourceCount : sources.length;
+    const riskPointLabels = new Set();
+    sources.forEach((source) => {
+        if (!Array.isArray(source?.flags)) return;
+        source.flags.forEach((flag) => {
+            const label = String(flag || '').trim();
+            if (label) riskPointLabels.add(label);
+        });
+    });
+    if (geo.isProxy === true) riskPointLabels.add('Proxy');
+    if (geo.isBogon === true) riskPointLabels.add('Bogon');
+    const riskPointCount = riskPointLabels.size;
+    const hasRiskData = sources.some((source) => source?.status === 'available')
+        || typeof geo.isProxy === 'boolean'
+        || typeof geo.isBogon === 'boolean';
     const hasCoordinates = Number.isFinite(geo.latitude) && Number.isFinite(geo.longitude);
     const country = [geo.country, geo.countryCode ? `(${geo.countryCode})` : ''].filter(Boolean).join(' ');
     const cityRegion = [geo.city, geo.region].filter(Boolean).join(', ');
@@ -259,12 +270,6 @@ const RiskReport = ({ data, loading }) => {
         } catch { return '未知'; }
     };
 
-    const renderSourceState = (source) => {
-        if (source.status !== 'available' || !Number.isFinite(source.score)) return '接口不可用';
-        if (source.decision === 'block') return '有风险信号';
-        return '已返回';
-    };
-
     return (
         <div className="mt-5 pt-4 border-t border-gray-100 dark:border-slate-700 transition-colors">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-5">
@@ -287,11 +292,13 @@ const RiskReport = ({ data, loading }) => {
                 </div>
                 <div className="col-span-2 md:col-span-1 bg-white/50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-700 rounded-lg p-3 text-center relative overflow-hidden group transition-colors">
                     <div className="relative z-10">
-                        <div className="text-[10px] text-gray-400 dark:text-slate-500 uppercase font-bold">来源覆盖率</div>
-                        <div className="text-xl font-mono font-bold mt-1 text-gray-700 dark:text-slate-200">
-                            {coverage === null ? 'N/A' : `${coverage}%`}
+                        <div className="text-[10px] text-gray-400 dark:text-slate-500 uppercase font-bold">风控点</div>
+                        <div className={`text-xl font-mono font-bold mt-1 ${riskPointCount > 0 ? 'text-rose-500' : hasRiskData ? 'text-emerald-500' : 'text-gray-700 dark:text-slate-200'}`}>
+                            {hasRiskData ? riskPointCount : 'N/A'}
                         </div>
-                        <div className="text-[10px] text-gray-400 dark:text-slate-500">{sourceCount}/{totalSourceCount} 个来源</div>
+                        <div className="text-[10px] text-gray-400 dark:text-slate-500">
+                            {hasRiskData ? (riskPointCount === 0 ? '未识别已知风险' : '已识别风险信号') : '数据不可用'}
+                        </div>
                     </div>
                     <div className="absolute bottom-0 left-0 h-1 bg-current w-full opacity-20 text-gray-400"></div>
                 </div>
@@ -302,38 +309,6 @@ const RiskReport = ({ data, loading }) => {
                 <Tag type="bad" active={geo.isProxy === true} text="Proxy" />
                 <Tag type="bad" active={geo.isBogon === true} text="Bogon" />
                 <Tag type="neutral" active={decision === 'unknown'} text="来源不足" />
-            </div>
-
-            <div className="mb-5 p-3 bg-white/40 dark:bg-slate-800/40 border border-gray-100 dark:border-slate-700 rounded-lg">
-                <div className="flex justify-between items-center gap-3 mb-2">
-                    <span className="text-[10px] text-gray-400 dark:text-slate-500 uppercase font-bold tracking-wider">多源对比</span>
-                    <span className="text-[10px] text-gray-400 dark:text-slate-500">权重按规模/信誉/维度启发式分配</span>
-                </div>
-                <div className="space-y-2">
-                    {sources.length === 0 ? (
-                        <div className="text-xs text-gray-500 dark:text-slate-400">暂无风险来源返回，未生成综合分数。</div>
-                    ) : sources.map((source) => {
-                        const sourceScore = Number.isFinite(source.score) ? `${source.score}/100` : 'N/A';
-                        const sourceWeight = Number.isFinite(source.weight) ? `${Math.round(source.weight * 100)}%` : 'N/A';
-                        const available = source.status === 'available' && Number.isFinite(source.score);
-                        return (
-                            <div key={source.id || source.provider} className="border-t border-gray-100/70 dark:border-slate-700/70 pt-2 first:border-t-0 first:pt-0">
-                                <div className="flex items-center justify-between gap-3">
-                                    <span className="text-xs font-semibold text-gray-700 dark:text-slate-300">{source.provider || 'Unknown API'}</span>
-                                    <span className={`text-sm font-mono font-bold ${available ? 'text-gray-700 dark:text-slate-200' : 'text-gray-400 dark:text-slate-500'}`}>{sourceScore}</span>
-                                </div>
-                                <div className="flex items-center justify-between gap-3 text-[10px] text-gray-400 dark:text-slate-500">
-                                    <span>{source.description || '风险信号'} · 权重 {sourceWeight}</span>
-                                    <span>{renderSourceState(source)}</span>
-                                </div>
-                                {Array.isArray(source.flags) && source.flags.length > 0 && (
-                                    <div className="text-[10px] text-rose-500 dark:text-rose-400 mt-1">信号：{source.flags.join(' / ')}</div>
-                                )}
-                            </div>
-                        );
-                    })}
-                </div>
-                <p className="text-[10px] text-gray-400 dark:text-slate-500 mt-3">{risk.basis || '综合分数仅供参考；缺失来源不会被填充为虚构分数。'}</p>
             </div>
 
             <div className="grid grid-cols-2 gap-x-4 gap-y-1">

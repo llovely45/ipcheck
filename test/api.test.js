@@ -401,11 +401,15 @@ test('uses presentation-only IP masking and card reveal interactions in the acti
     assert.match(appSource, /getProfile\(ip\)/);
 });
 
-test('renders multi-source risk details and weighted coverage in the active page', () => {
+test('shows risk point count and hides internal multi-source comparison', () => {
     const appSource = readFileSync(resolve(projectRoot, 'static/app.js'), 'utf8');
 
+    assert.match(appSource, /风控点/);
     assert.match(appSource, /risk\.sources/);
-    assert.match(appSource, /risk\.coverage/);
-    assert.match(appSource, /risk\.basis/);
-    assert.match(appSource, /source\.weight/);
+    assert.match(appSource, /source\.flags/);
+    assert.doesNotMatch(appSource, /来源覆盖率/);
+    assert.doesNotMatch(appSource, /多源对比/);
+    assert.doesNotMatch(appSource, /source\.provider/);
+    assert.doesNotMatch(appSource, /source\.weight/);
+    assert.doesNotMatch(appSource, /risk\.basis/);
 });
