@@ -218,6 +218,65 @@ test('normalizes freeipapi proxy flag without inventing VPN or Tor results', () 
     assert.equal(source.status, 'available');
 });
 
+test('normalizes IPLark threat, proxy, and privacy signals into a scored risk source', () => {
+    const api = loadApi();
+    assert.ok(api);
+
+    const source = api.parseIplarkRisk({
+        ip: '8.8.8.8',
+        geo: {
+            rir: 'ARIN',
+            continent: '北美洲',
+            country: '美国',
+            country_code: 'US',
+            region: '加利福尼亚州',
+            city: '芒廷维谷',
+            longitude: '-122.118',
+            latitude: '38.009',
+            timezone: 'America/Los_Angeles',
+            carrier: '',
+            org: 'Google LLC',
+            isp: 'Google LLC',
+            asn: 'AS15169',
+            domain: 'google.com',
+            is_anycast: true,
+        },
+        privacy: {
+            type: 'hosting',
+            is_datacenter: true,
+            is_anonymous: true,
+            is_icloud_relay: true,
+            is_tor: true,
+            is_known_bot: true,
+        },
+        threat_intelligence: { is_threat: true },
+        proxy_intelligence: { is_proxy: true },
+    });
+
+    assert.equal(source.ip, '8.8.8.8');
+    assert.equal(source.status, 'available');
+    assert.equal(source.decision, 'block');
+    assert.equal(source.score, 1);
+    assert.deepEqual(JSON.parse(JSON.stringify(source.flags)), [
+        '威胁',
+        'Proxy',
+        'Tor',
+        '匿名',
+        'iCloud Relay',
+        '已知 Bot',
+        '托管/数据中心',
+    ]);
+    assert.deepEqual(JSON.parse(JSON.stringify(source.signals)), {
+        threat: true,
+        proxy: true,
+        tor: true,
+        anonymous: true,
+        icloudRelay: true,
+        knownBot: true,
+        datacenter: true,
+    });
+});
+
 test('aggregates only scored sources and reports weighted coverage', () => {
     const api = loadApi();
     assert.ok(api);
@@ -269,19 +328,35 @@ test('queries every configured risk source with the original unmasked IP', async
         if (url === 'https://free.freeipapi.com/api/json/203.0.113.8') {
             return response({ ipAddress: '203.0.113.8', isProxy: false });
         }
+        if (url === 'https://iplark.com/demo/api?ip=203.0.113.8') {
+            return response({
+                ip: '203.0.113.8',
+                privacy: {
+                    type: '',
+                    is_datacenter: false,
+                    is_anonymous: false,
+                    is_icloud_relay: false,
+                    is_tor: false,
+                    is_known_bot: false,
+                },
+                threat_intelligence: { is_threat: false },
+                proxy_intelligence: { is_proxy: false },
+            });
+        }
         throw new Error(`Unexpected URL: ${url}`);
     });
     assert.ok(api);
 
     const risk = await api.getRiskData('203.0.113.8');
 
-    assert.equal(risk.score, 92);
+    assert.equal(risk.score, 93);
     assert.equal(risk.coverage, 100);
-    assert.equal(risk.sourceCount, 3);
+    assert.equal(risk.sourceCount, 4);
     assert.deepEqual(calls, [
         'https://blackbox.ipinfo.app/api/v1/203.0.113.8',
         'https://ipinfo.io/widget/demo/203.0.113.8',
         'https://free.freeipapi.com/api/json/203.0.113.8',
+        'https://iplark.com/demo/api?ip=203.0.113.8',
     ]);
 });
 
@@ -437,6 +512,21 @@ test('coalesces repeated profile lookups for the same IP', async () => {
         if (url === 'https://free.freeipapi.com/api/json/8.8.8.8') {
             return response({ ipAddress: '8.8.8.8', isProxy: false });
         }
+        if (url === 'https://iplark.com/demo/api?ip=8.8.8.8') {
+            return response({
+                ip: '8.8.8.8',
+                privacy: {
+                    type: '',
+                    is_datacenter: false,
+                    is_anonymous: false,
+                    is_icloud_relay: false,
+                    is_tor: false,
+                    is_known_bot: false,
+                },
+                threat_intelligence: { is_threat: false },
+                proxy_intelligence: { is_proxy: false },
+            });
+        }
         throw new Error(`Unexpected URL: ${url}`);
     });
     assert.ok(api);
@@ -450,8 +540,8 @@ test('coalesces repeated profile lookups for the same IP', async () => {
     assert.equal(profiles[0].geo.ip, '8.8.8.8');
     assert.equal(profiles[1].geo.ip, '8.8.8.8');
     assert.equal(profiles[2].geo.ip, '8.8.8.8');
-    assert.equal(calls.length, 4);
-    assert.equal(new Set(calls).size, 4);
+    assert.equal(calls.length, 5);
+    assert.equal(new Set(calls).size, 5);
 });
 
 test('rejects non-success responses instead of parsing error pages as data', async () => {

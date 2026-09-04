@@ -12,7 +12,7 @@
 -   **⚡ 实时延迟测速**：内置 Bilibili, Google, GitHub, OpenAI 等 10+ 常用服务的延迟检测，配备 Sparkline 实时波形图展示网络波动。
 -   **📍 多源数据**：
     -   主 IP/地理位置：优先使用 `ipwho.is`，失败时回退到 `ipapi.is` 和 `freeipapi.com`。
-    -   纯净度来源（仅后台计算）：`ipinfo.io/widget/demo`（45%）、`blackbox.ipinfo.app`（35%）、`freeipapi.com`（20%）。权重是结合供应商规模/行业信誉、数据维度和公开可用性的启发式静态配置，不是官方评级。
+    -   纯净度来源（仅后台计算）：`ipinfo.io/widget/demo`（配置权重 0.45）、`blackbox.ipinfo.app`（0.35）、`freeipapi.com`（0.20）、`iplark.com/demo/api?ip=`（0.25）。聚合时按可用来源权重归一化；权重是结合供应商规模/行业信誉、数据维度和公开可用性的启发式静态配置，不是官方评级。
     -   国内出口：使用 `myip.ipip.net/json`；国外出口使用 JSON 版 `ipify`；双栈检测优先使用 IPLark 纯文本接口，失败时回退到 `ipify`。
     -   连接信息：读取 Cloudflare Trace 获取当前访问 IP、TLS/HTTP 版本和边缘节点；Cloudflare 卡片使用该 IP。
 -   **🔁 双栈检测**：同时检测 IPv4 和 IPv6 连接能力。

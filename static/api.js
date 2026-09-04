@@ -30,7 +30,8 @@
         reputationSources: Object.freeze({
             blackbox: (ip) => `https://blackbox.ipinfo.app/api/v1/${encodeURIComponent(ip)}`,
             ipinfo: (ip) => `https://ipinfo.io/widget/demo/${encodeURIComponent(ip)}`,
-            freeIpApi: (ip) => `https://free.freeipapi.com/api/json/${encodeURIComponent(ip)}`
+            freeIpApi: (ip) => `https://free.freeipapi.com/api/json/${encodeURIComponent(ip)}`,
+            iplark: (ip) => `https://iplark.com/demo/api?ip=${encodeURIComponent(ip)}`
         })
     });
 
@@ -393,6 +394,76 @@
         };
     };
 
+    const parseIplarkRisk = (payload) => {
+        if (!payload || typeof payload !== 'object' || !textOrEmpty(payload.ip)) {
+            throw new Error('IPLark returned no IP data');
+        }
+
+        const privacy = payload.privacy && typeof payload.privacy === 'object' ? payload.privacy : {};
+        const threatIntelligence = payload.threat_intelligence && typeof payload.threat_intelligence === 'object'
+            ? payload.threat_intelligence
+            : {};
+        const proxyIntelligence = payload.proxy_intelligence && typeof payload.proxy_intelligence === 'object'
+            ? payload.proxy_intelligence
+            : {};
+        const rawSignals = [
+            privacy.type,
+            privacy.is_datacenter,
+            privacy.is_anonymous,
+            privacy.is_icloud_relay,
+            privacy.is_tor,
+            privacy.is_known_bot,
+            threatIntelligence.is_threat,
+            proxyIntelligence.is_proxy
+        ];
+        if (!rawSignals.some((value) => typeof value === 'boolean' || textOrEmpty(value) !== '')) {
+            throw new Error('IPLark returned no risk data');
+        }
+
+        const signals = {
+            threat: threatIntelligence.is_threat === true,
+            proxy: proxyIntelligence.is_proxy === true,
+            tor: privacy.is_tor === true,
+            anonymous: privacy.is_anonymous === true,
+            icloudRelay: privacy.is_icloud_relay === true,
+            knownBot: privacy.is_known_bot === true,
+            datacenter: privacy.is_datacenter === true || textOrEmpty(privacy.type).toLowerCase() === 'hosting'
+        };
+        const flags = [];
+        if (signals.threat) flags.push('威胁');
+        if (signals.proxy) flags.push('Proxy');
+        if (signals.tor) flags.push('Tor');
+        if (signals.anonymous) flags.push('匿名');
+        if (signals.icloudRelay) flags.push('iCloud Relay');
+        if (signals.knownBot) flags.push('已知 Bot');
+        if (signals.datacenter) flags.push('托管/数据中心');
+
+        const penalties = {
+            threat: 70,
+            proxy: 45,
+            tor: 50,
+            anonymous: 30,
+            icloudRelay: 25,
+            knownBot: 40,
+            datacenter: 25
+        };
+        const score = Math.max(1, Math.min(100, 95 - Object.keys(penalties).reduce(
+            (total, key) => total + (signals[key] ? penalties[key] : 0),
+            0
+        )));
+        const severeRisk = signals.threat || signals.proxy || signals.tor
+            || signals.anonymous || signals.icloudRelay || signals.knownBot;
+
+        return {
+            ip: textOrEmpty(payload.ip),
+            status: 'available',
+            decision: severeRisk ? 'block' : 'allow',
+            score,
+            flags,
+            signals
+        };
+    };
+
     const getRiskPointLabels = (sources, geo = {}) => {
         const labels = [];
         const seen = new Set();
@@ -436,6 +507,14 @@
             description: '公开 Proxy 标记',
             request: (ip, fetchImpl) => requestJson(API_ENDPOINTS.reputationSources.freeIpApi(ip), fetchImpl),
             parse: parseFreeIpApiRisk
+        }),
+        Object.freeze({
+            id: 'iplark',
+            provider: 'IPLark',
+            weight: 0.25,
+            description: '威胁、代理与隐私信号',
+            request: (ip, fetchImpl) => requestJson(API_ENDPOINTS.reputationSources.iplark(ip), fetchImpl),
+            parse: parseIplarkRisk
         })
     ]);
 
@@ -544,6 +623,7 @@
         parseBlackboxRisk,
         parseIpinfoPrivacyResponse,
         parseFreeIpApiRisk,
+        parseIplarkRisk,
         getRiskPointLabels,
         aggregatePurityScores,
         getGeoData,
