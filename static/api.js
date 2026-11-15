@@ -26,6 +26,11 @@
             v4: 'https://api.ipify.org?format=json',
             v6: 'https://api6.ipify.org?format=json'
         }),
+        domesticDualStack: Object.freeze({
+            v4: Object.freeze(['https://ipv4.ddnspod.com', 'https://v4.yinghualuo.cn/bejson']),
+            v6: Object.freeze(['https://ipv6.ddnspod.com', 'https://v6.yinghualuo.cn/bejson'])
+        }),
+        webRtcStun: 'stun:stun.miwifi.com:3478',
         reputation: (ip) => `https://blackbox.ipinfo.app/api/v1/${encodeURIComponent(ip)}`,
         reputationSources: Object.freeze({
             blackbox: (ip) => `https://blackbox.ipinfo.app/api/v1/${encodeURIComponent(ip)}`,
@@ -302,6 +307,103 @@
 
         throw lastError || new Error(`All ${version} IP providers failed`);
     };
+
+    const getAddressVersion = (value) => {
+        const ip = textOrEmpty(value);
+        if (/^(?:\d{1,3}\.){3}\d{1,3}$/.test(ip)
+            && ip.split('.').every(part => Number(part) <= 255)) return 'v4';
+        if (!ip.includes(':') || /[^0-9a-f:.]/i.test(ip)) return null;
+        try {
+            return new URL(`http://[${ip}]/`).hostname ? 'v6' : null;
+        } catch { return null; }
+    };
+
+    const getDomesticIpVersion = async (version, fetchImpl = global.fetch) => {
+        const urls = API_ENDPOINTS.domesticDualStack[version];
+        if (!urls) throw new Error(`Unsupported IP version: ${version}`);
+        for (const url of urls) {
+            try {
+                const value = url.includes('ddnspod.com')
+                    ? await requestText(url, fetchImpl)
+                    : (await requestJson(url, fetchImpl))?.ip;
+                const ip = textOrEmpty(value);
+                if (getAddressVersion(ip) !== version) throw new Error('Invalid IP family');
+                return ip;
+            } catch { /* Try another domestic endpoint, never a foreign fallback. */ }
+        }
+        throw new Error(`Domestic ${version} probe unavailable`);
+    };
+
+    const getDomesticDualStack = async (fetchImpl = global.fetch) => {
+        const results = await Promise.allSettled(['v4', 'v6'].map(version =>
+            getDomesticIpVersion(version, fetchImpl)));
+        const entry = result => result.status === 'fulfilled'
+            ? { status: 'available', ip: result.value }
+            : { status: 'unavailable', ip: null };
+        return {
+            v4: entry(results[0]), v6: entry(results[1]),
+            dualStack: results.every(result => result.status === 'fulfilled')
+        };
+    };
+
+    const isPublicAddress = (ip) => {
+        const version = getAddressVersion(ip);
+        if (version === 'v6') return /^[23][0-9a-f]{3}:/i.test(ip);
+        if (version !== 'v4') return false;
+        const [a, b] = ip.split('.').map(Number);
+        return a !== 0 && a !== 10 && a !== 127 && a < 224
+            && !(a === 169 && b === 254) && !(a === 172 && b >= 16 && b <= 31)
+            && !(a === 192 && b === 168) && !(a === 100 && b >= 64 && b <= 127)
+            && !(a === 198 && (b === 18 || b === 19));
+    };
+
+    const getWebRtcIps = ({
+        PeerConnection = global.RTCPeerConnection || global.webkitRTCPeerConnection,
+        timeoutMs = 8000,
+        signal
+    } = {}) => new Promise(resolve => {
+        const ips = new Set();
+        let pc, channel, timer, settled = false;
+        const finish = status => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            signal?.removeEventListener('abort', abort);
+            if (pc) {
+                pc.onicecandidate = null;
+                pc.onicegatheringstatechange = null;
+                try { channel?.close(); } catch { /* Already closed. */ }
+                try { pc.close(); } catch { /* Already closed. */ }
+            }
+            resolve({ status: ips.size ? 'available' : status, ips: [...ips] });
+        };
+        const abort = () => finish('aborted');
+        if (signal?.aborted) return finish('aborted');
+        if (typeof PeerConnection !== 'function') return finish('unsupported');
+        signal?.addEventListener('abort', abort, { once: true });
+        timer = setTimeout(() => finish('timeout'), timeoutMs);
+        try {
+            pc = new PeerConnection({ iceServers: [{ urls: API_ENDPOINTS.webRtcStun }] });
+            pc.onicecandidate = event => {
+                if (!event.candidate) return finish('empty');
+                const candidate = event.candidate;
+                const parts = textOrEmpty(candidate.candidate).split(/\s+/);
+                const address = candidate.address || parts[4];
+                const type = candidate.type || parts[parts.indexOf('typ') + 1];
+                // srflx is the STUN-mapped address; a global host IPv6 may be direct.
+                if ((type === 'srflx' || type === 'host') && isPublicAddress(address)) ips.add(address);
+            };
+            pc.onicegatheringstatechange = () => {
+                if (pc.iceGatheringState === 'complete') finish('empty');
+            };
+            channel = pc.createDataChannel('ipcheck');
+            Promise.resolve().then(() => {
+                if (!settled) return pc.createOffer();
+            }).then(offer => {
+                if (!settled) return pc.setLocalDescription(offer);
+            }).catch(() => finish('error'));
+        } catch { finish('error'); }
+    });
 
     const parseBlackboxDecision = (value) => {
         const result = textOrEmpty(value).split(',')[0].toUpperCase();
@@ -631,6 +733,9 @@
         getDomesticIp,
         getForeignIp,
         getIpVersion,
+        getAddressVersion,
+        getDomesticDualStack,
+        getWebRtcIps,
         getRiskData,
         getProfile,
         riskSources: RISK_SOURCE_DEFINITIONS

@@ -6,6 +6,8 @@ const {
     getDomesticIp,
     getForeignIp,
     getIpVersion,
+    getDomesticDualStack,
+    getWebRtcIps,
     getProfile,
     getRiskPointLabels,
     maskIp
@@ -671,6 +673,77 @@ const DualStackCard = ({ type, color }) => {
     );
 };
 
+const DomesticDualStack = () => {
+    const [result, setResult] = useState(null);
+    const [run, setRun] = useState(0);
+    const { revealed, revealHandlers } = useIpReveal();
+    useEffect(() => {
+        let active = true;
+        setResult(null);
+        getDomesticDualStack().then(value => { if (active) setResult(value); });
+        return () => { active = false; };
+    }, [run]);
+
+    return (
+        <div className="glass-card rounded-2xl p-6 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50" tabIndex="0" {...revealHandlers}>
+            <div className="flex items-center justify-between gap-3 mb-3">
+                <h3 className="text-sm font-bold text-gray-700 dark:text-slate-200">国内双栈 IP 检测</h3>
+                <button type="button" disabled={!result} onClick={() => setRun(value => value + 1)} className="text-xs text-primary disabled:opacity-40">重新检测</button>
+            </div>
+            <p role="status" className="text-xs text-gray-500 dark:text-slate-400 mb-4">
+                {!result ? '正在分别检测国内 IPv4 / IPv6…' : result.dualStack ? '已检测到国内 IPv4 + IPv6 双栈出口' : '尚未确认国内双栈，请查看各协议结果'}
+            </p>
+            <div className="space-y-3">
+                {['v4', 'v6'].map(version => (
+                    <div key={version}>
+                        <div className="text-[10px] font-bold text-gray-400 mb-1">国内 {version === 'v4' ? 'IPv4' : 'IPv6'}</div>
+                        <div className="text-sm font-mono font-bold break-all text-gray-800 dark:text-slate-100">
+                            {!result ? '检测中…' : result[version].ip ? <MaskedIp ip={result[version].ip} revealed={revealed} /> : '未获取到 IP'}
+                        </div>
+                    </div>
+                ))}
+            </div>
+            <p className="text-[10px] text-gray-400 dark:text-slate-500 mt-4">由浏览器直连国内探测服务；当前代理与路由规则可能影响出口。请求失败不代表本地网络不支持该协议。</p>
+        </div>
+    );
+};
+
+const WebRtcCard = () => {
+    const [result, setResult] = useState(null);
+    const [run, setRun] = useState(0);
+    const { revealed, revealHandlers } = useIpReveal();
+    useEffect(() => {
+        const controller = new AbortController();
+        let active = true;
+        setResult(null);
+        getWebRtcIps({ signal: controller.signal }).then(value => { if (active) setResult(value); });
+        return () => { active = false; controller.abort(); };
+    }, [run]);
+    const status = {
+        available: '已获取 WebRTC 公网 IP',
+        unsupported: '此浏览器不支持 WebRTC 检测',
+        timeout: '检测超时，未获取到公网 IP',
+        empty: '检测完成，未获取到公网 IP',
+        error: 'WebRTC 检测失败或被浏览器限制'
+    };
+    return (
+        <div className="glass-card rounded-2xl p-6 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50" tabIndex="0" {...revealHandlers}>
+            <div className="flex items-center justify-between gap-3 mb-3">
+                <h3 className="text-sm font-bold text-gray-700 dark:text-slate-200">WebRTC IP 检测</h3>
+                <button type="button" disabled={!result} onClick={() => setRun(value => value + 1)} className="text-xs text-primary disabled:opacity-40">重新检测</button>
+            </div>
+            <p role="status" className="text-xs text-gray-500 dark:text-slate-400 mb-4">{result ? status[result.status] || '未获取到公网 IP' : '正在通过小米 STUN 检测…'}</p>
+            <div className="space-y-3">
+                {result?.ips.map(ip => (
+                    <div key={ip} className="text-sm font-mono font-bold break-all text-gray-800 dark:text-slate-100"><MaskedIp ip={ip} revealed={revealed} /></div>
+                ))}
+            </div>
+            <p className="text-[10px] text-gray-400 dark:text-slate-500 mt-4 break-all">STUN：stun.miwifi.com:3478</p>
+            <p className="text-[10px] text-gray-400 dark:text-slate-500 mt-2">WebRTC 出口可能与网页出口不同。未获取到 IP 可能由 UDP、STUN 或浏览器隐私策略限制导致，不代表不存在 IP 泄露。</p>
+        </div>
+    );
+};
+
 // Theme Definitions
 const THEMES = {
     Default: {
@@ -760,6 +833,11 @@ const App = () => {
                 <DualStackCard type="v4" color="blue" />
                 <DualStackCard type="v6" color="purple" />
             </div>
+
+            <section className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8 animate-slide-up" style={{ animationDelay: '250ms' }}>
+                <DomesticDualStack />
+                <WebRtcCard />
+            </section>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
                 <IpCard title="国内出口" type="domestic" delay={300} accent="blue" />
