@@ -16,9 +16,9 @@ test('domestic probes validate each family and use only domestic fallbacks', asy
     const calls = [];
     const result = await client.getDomesticDualStack(async (url) => {
         calls.push(url);
-        if (url.includes('ipv4.ddnspod')) return response('203.0.113.8');
-        if (url.includes('ipv6.ddnspod')) return response('203.0.113.8'); // Wrong family must be rejected.
-        if (url.includes('v6.yinghualuo')) return response({ ip: '2001:db8::1' });
+        if (url.includes('ipv4.ip.mir6')) return response('203.0.113.8');
+        if (url.includes('ipv6.ip.mir6')) return response('203.0.113.8'); // Wrong family must be rejected.
+        if (url.includes('test6.ustc')) return response({ processedString: '2001:db8::1' });
         throw new Error('Unexpected provider');
     });
     assert.equal(result.v4.ip, '203.0.113.8');
@@ -30,7 +30,7 @@ test('domestic probes validate each family and use only domestic fallbacks', asy
 
 test('failed IPv6 probes do not discard IPv4 or claim IPv6 is unsupported', async () => {
     const result = await api().getDomesticDualStack(async (url) => {
-        if (url.includes('ipv4.ddnspod')) return response('203.0.113.8');
+        if (url.includes('ipv4.ip.mir6')) return response('203.0.113.8');
         return response('<html>error</html>');
     });
     assert.equal(result.v4.status, 'available');

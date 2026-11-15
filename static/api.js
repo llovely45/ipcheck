@@ -27,8 +27,8 @@
             v6: 'https://api6.ipify.org?format=json'
         }),
         domesticDualStack: Object.freeze({
-            v4: Object.freeze(['https://ipv4.ddnspod.com', 'https://v4.yinghualuo.cn/bejson']),
-            v6: Object.freeze(['https://ipv6.ddnspod.com', 'https://v6.yinghualuo.cn/bejson'])
+            v4: Object.freeze(['https://ipv4.ip.mir6.com', 'https://test.ustc.edu.cn/backend/getIP.php?cors=1']),
+            v6: Object.freeze(['https://ipv6.ip.mir6.com', 'https://test6.ustc.edu.cn/backend/getIP.php?cors=1'])
         }),
         webRtcStun: 'stun:stun.miwifi.com:3478',
         reputation: (ip) => `https://blackbox.ipinfo.app/api/v1/${encodeURIComponent(ip)}`,
@@ -323,9 +323,9 @@
         if (!urls) throw new Error(`Unsupported IP version: ${version}`);
         for (const url of urls) {
             try {
-                const value = url.includes('ddnspod.com')
+                const value = url.includes('ip.mir6.com')
                     ? await requestText(url, fetchImpl)
-                    : (await requestJson(url, fetchImpl))?.ip;
+                    : (await requestJson(url, fetchImpl))?.processedString;
                 const ip = textOrEmpty(value);
                 if (getAddressVersion(ip) !== version) throw new Error('Invalid IP family');
                 return ip;

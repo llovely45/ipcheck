@@ -15,7 +15,7 @@
     -   纯净度来源（仅后台计算）：`ipinfo.io/widget/demo`（配置权重 0.45）、`blackbox.ipinfo.app`（0.35）、`freeipapi.com`（0.20）、`iplark.com/demo/api?ip=`（0.25）。聚合时按可用来源权重归一化；权重是结合供应商规模/行业信誉、数据维度和公开可用性的启发式静态配置，不是官方评级。
     -   国内出口：使用 `myip.ipip.net/json`；国外出口使用 JSON 版 `ipify`；双栈检测优先使用 IPLark 纯文本接口，失败时回退到 `ipify`。
     -   连接信息：读取 Cloudflare Trace 获取当前访问 IP、TLS/HTTP 版本和边缘节点；Cloudflare 卡片使用该 IP。
--   **🔁 双栈检测**：保留原有 IPv4/IPv6 连接检测，新增独立的国内双栈检测。浏览器分别请求 `ipv4.ddnspod.com` / `ipv6.ddnspod.com`，失败时回退到国内 `v4.yinghualuo.cn/bejson` / `v6.yinghualuo.cn/bejson`；验证返回 IP 的协议类型，不使用国外接口补齐国内结果。只有两个请求均取得对应类型 IP 时才确认双栈。
+-   **🔁 双栈检测**：保留原有 IPv4/IPv6 连接检测，新增独立的国内双栈检测。浏览器分别请求 `ipv4.ip.mir6.com` / `ipv6.ip.mir6.com`，失败时回退到中国科大 `test.ustc.edu.cn/backend/getIP.php?cors=1` / `test6.ustc.edu.cn/backend/getIP.php?cors=1`；验证返回 IP 的协议类型，不使用国外接口补齐国内结果。只有两个请求均取得对应类型 IP 时才确认双栈。
 -   **🛰️ WebRTC IP**：使用 `stun:stun.miwifi.com:3478` 收集 STUN 映射地址及公网 host 地址，去重并过滤私网、链路本地和 mDNS；默认脱敏，支持重新检测。8 秒后结束并关闭 PeerConnection，不申请摄像头/麦克风权限。
 -   **探测边界**：国内接口是国内服务目标，结果反映浏览器当前代理/路由下的出口，不保证绕过 VPN；请求失败显示“未获取到 IP”，不判定 IPv6 不受支持。WebRTC 无结果也不能证明不存在 IP 泄露。
 -   **🔒 展示脱敏**：页面默认隐藏 IPv4 后两段、IPv6 `/32` 后的全部段，悬停或聚焦对应卡片时临时显示完整 IP；API 请求仍使用原始地址。
